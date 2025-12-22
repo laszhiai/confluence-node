@@ -2,39 +2,48 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import axios from "axios";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const { 
-  CONF_BASE_URL, 
-  CONF_USERNAME, 
-  CONF_PASSWORD, 
-  CONF_SPACE
-} = process.env;
+const { CONF_BASE_URL, CONF_USERNAME, CONF_PASSWORD, CONF_SPACE } = process.env;
 
 // 创建 axios 实例
 const api = axios.create({
   baseURL: `${CONF_BASE_URL}/rest/api`,
   auth: {
-    username: CONF_USERNAME,
-    password: CONF_PASSWORD,
+    username: CONF_USERNAME ?? "",
+    password: CONF_PASSWORD ?? "",
   },
   headers: {
     "Content-Type": "application/json",
   },
 });
 
+type ConfluencePage = {
+  id: string;
+  title: string;
+  version: { number: number };
+  space: { key: string };
+  body?: { storage?: { value?: string } };
+  _links: { webui: string };
+};
+
+type ConfluenceSearchResult = {
+  id: string;
+  title: string;
+  version: { number: number };
+  space: { key: string };
+  _links: { webui: string };
+};
+
 // ===== Confluence API 函数 =====
 
-async function getPage(space, title) {
+async function getPage(space: string, title: string): Promise<ConfluencePage | undefined> {
   try {
-    const res = await api.get("/content", {
+    const res = await api.get<{ results: ConfluencePage[] }>("/content", {
       params: {
         spaceKey: space,
         title,
@@ -43,26 +52,33 @@ async function getPage(space, title) {
     });
     return res.data.results[0];
   } catch (error) {
-    throw new Error(`获取页面失败: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`获取页面失败: ${message}`);
   }
 }
 
-async function getPageById(pageId) {
+async function getPageById(pageId: string): Promise<ConfluencePage> {
   try {
-    const res = await api.get(`/content/${pageId}`, {
+    const res = await api.get<ConfluencePage>(`/content/${pageId}`, {
       params: {
         expand: "version,space,body.storage",
       },
     });
     return res.data;
   } catch (error) {
-    throw new Error(`获取页面失败: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`获取页面失败: ${message}`);
   }
 }
 
-async function createPage(space, title, content, parentId = null) {
+async function createPage(
+  space: string,
+  title: string,
+  content: string,
+  parentId: string | null = null
+): Promise<ConfluencePage> {
   try {
-    const pageData = {
+    const pageData: Record<string, unknown> = {
       type: "page",
       title,
       space: { key: space },
@@ -78,16 +94,17 @@ async function createPage(space, title, content, parentId = null) {
       pageData.ancestors = [{ id: parentId }];
     }
 
-    const res = await api.post("/content", pageData);
+    const res = await api.post<ConfluencePage>("/content", pageData);
     return res.data;
   } catch (error) {
-    throw new Error(`创建页面失败: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`创建页面失败: ${message}`);
   }
 }
 
-async function updatePage(page, content, title = null) {
+async function updatePage(page: ConfluencePage, content: string, title: string | null = null): Promise<ConfluencePage> {
   try {
-    const res = await api.put(`/content/${page.id}`, {
+    const res = await api.put<ConfluencePage>(`/content/${page.id}`, {
       id: page.id,
       type: "page",
       title: title || page.title,
@@ -103,22 +120,30 @@ async function updatePage(page, content, title = null) {
     });
     return res.data;
   } catch (error) {
-    throw new Error(`更新页面失败: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`更新页面失败: ${message}`);
   }
 }
 
-async function deletePage(pageId) {
+async function deletePage(pageId: string): Promise<{ success: true; message: string }> {
   try {
     await api.delete(`/content/${pageId}`);
     return { success: true, message: "页面已删除" };
   } catch (error) {
-    throw new Error(`删除页面失败: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`删除页面失败: ${message}`);
   }
 }
 
-async function listAllSpaces({ type = "global", limit = 200 } = {}) {
+async function listAllSpaces({
+  type = "global",
+  limit = 200,
+}: {
+  type?: "global" | "personal";
+  limit?: number;
+} = {}): Promise<Array<{ key: string; name: string; type: string; id: string }>> {
   try {
-    const res = await api.get("/space", {
+    const res = await api.get<{ results: Array<{ key: string; name: string; type: string; id: string }> }>("/space", {
       params: { type, limit },
     });
     return res.data.results.map((s) => ({
@@ -128,17 +153,16 @@ async function listAllSpaces({ type = "global", limit = 200 } = {}) {
       id: s.id,
     }));
   } catch (error) {
-    throw new Error(`获取 Spaces 失败: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`获取 Spaces 失败: ${message}`);
   }
 }
 
-async function searchPages(space, query, limit = 25) {
+async function searchPages(space: string | undefined, query: string, limit = 25): Promise<ConfluenceSearchResult[]> {
   try {
-    const cql = space
-      ? `space=${space} AND title~"${query}"`
-      : `title~"${query}"`;
+    const cql = space ? `space=${space} AND title~"${query}"` : `title~"${query}"`;
 
-    const res = await api.get("/content/search", {
+    const res = await api.get<{ results: ConfluenceSearchResult[] }>("/content/search", {
       params: {
         cql,
         limit,
@@ -147,13 +171,14 @@ async function searchPages(space, query, limit = 25) {
     });
     return res.data.results;
   } catch (error) {
-    throw new Error(`搜索页面失败: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`搜索页面失败: ${message}`);
   }
 }
 
-async function getChildPages(parentId, limit = 50) {
+async function getChildPages(parentId: string, limit = 50): Promise<ConfluencePage[]> {
   try {
-    const res = await api.get(`/content/${parentId}/child/page`, {
+    const res = await api.get<{ results: ConfluencePage[] }>(`/content/${parentId}/child/page`, {
       params: {
         limit,
         expand: "version,space",
@@ -161,18 +186,20 @@ async function getChildPages(parentId, limit = 50) {
     });
     return res.data.results;
   } catch (error) {
-    throw new Error(`获取子页面失败: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`获取子页面失败: ${message}`);
   }
 }
 
-async function getPageHistory(pageId, limit = 10) {
+async function getPageHistory(pageId: string, limit = 10): Promise<unknown> {
   try {
     const res = await api.get(`/content/${pageId}/history`, {
       params: { limit },
     });
     return res.data;
   } catch (error) {
-    throw new Error(`获取页面历史失败: ${error.message}`);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`获取页面历史失败: ${message}`);
   }
 }
 
@@ -181,7 +208,7 @@ async function getPageHistory(pageId, limit = 10) {
 /**
  * CDATA 内部不能出现 "]]>"，需要拆分/转义
  */
-function escapeForCdata(text) {
+function escapeForCdata(text: unknown): string {
   return String(text ?? "").replaceAll("]]>", "]]]]><![CDATA[>");
 }
 
@@ -189,7 +216,7 @@ function escapeForCdata(text) {
  * Confluence Code Macro 支持的 language 值在不同版本/插件可能有差异。
  * 为了避免 InvalidValueException，这里做常见别名归一化；无法识别时直接不写 language 参数（最稳）。
  */
-const CODE_LANGUAGE_ALIASES = new Map([
+const CODE_LANGUAGE_ALIASES = new Map<string, string>([
   ["js", "javascript"],
   ["jsx", "javascript"],
   ["node", "javascript"],
@@ -204,7 +231,7 @@ const CODE_LANGUAGE_ALIASES = new Map([
   ["ps", "powershell"],
 ]);
 
-const KNOWN_SAFE_CODE_LANGUAGES = new Set([
+const KNOWN_SAFE_CODE_LANGUAGES = new Set<string>([
   "bash",
   "c",
   "cpp",
@@ -237,7 +264,7 @@ const KNOWN_SAFE_CODE_LANGUAGES = new Set([
   "yaml",
 ]);
 
-function normalizeCodeLanguage(language) {
+function normalizeCodeLanguage(language: unknown): string | null {
   if (!language) return null;
   const raw = String(language).trim().toLowerCase();
   if (!raw) return null;
@@ -249,11 +276,21 @@ function normalizeCodeLanguage(language) {
  * 生成 Confluence/KMS Code Macro（storage format）
  * 尽量只使用最稳的参数，避免 InvalidValueException。
  */
-function buildCodeMacro({ code, language, linenumbers = false, collapse = false } = {}) {
+function buildCodeMacro({
+  code,
+  language,
+  linenumbers = false,
+  collapse = false,
+}: {
+  code: string;
+  language?: string;
+  linenumbers?: boolean;
+  collapse?: boolean;
+}): string {
   const safeCode = escapeForCdata(code);
   const lang = normalizeCodeLanguage(language);
 
-  const params = [];
+  const params: string[] = [];
   if (lang) {
     params.push(`<ac:parameter ac:name="language">${lang}</ac:parameter>`);
   }
@@ -292,7 +329,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "confluence_list_spaces",
-        description: "列出当前用户可访问的所有 Confluence (KMS) Spaces。注意：KMS 是公司内部对 Confluence 知识管理系统的别名，两者是同一个系统。",
+        description:
+          "列出当前用户可访问的所有 Confluence (KMS) Spaces。注意：KMS 是公司内部对 Confluence 知识管理系统的别名，两者是同一个系统。",
         inputSchema: {
           type: "object",
           properties: {
@@ -362,7 +400,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "confluence_upsert_page",
-        description: "创建或更新 Confluence (KMS) 页面（如果页面存在则更新，否则创建）。KMS 是公司内部 Confluence 系统的别名。",
+        description:
+          "创建或更新 Confluence (KMS) 页面（如果页面存在则更新，否则创建）。KMS 是公司内部 Confluence 系统的别名。",
         inputSchema: {
           type: "object",
           properties: {
@@ -516,9 +555,38 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
+type CallToolArgs = Record<string, unknown> & {
+  // common
+  space?: string;
+  title?: string;
+  pageId?: string;
+  content?: string;
+  parentId?: string;
+  query?: string;
+  limit?: number;
+  newTitle?: string;
+  // code macro
+  code?: string;
+  language?: string;
+  linenumbers?: boolean;
+  collapse?: boolean;
+  // list spaces
+  type?: "global" | "personal";
+};
+
+type CallToolRequestParams = {
+  name: string;
+  arguments?: CallToolArgs;
+};
+
+type CallToolRequest = {
+  params: CallToolRequestParams;
+};
+
 // 处理工具调用
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params;
+server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
+  const { name, arguments: argsRaw } = request.params;
+  const args = (argsRaw ?? {}) as CallToolArgs;
 
   try {
     switch (name) {
@@ -535,19 +603,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "confluence_create_page": {
-        const space = args.space || CONF_SPACE;
-        let content = args.content;
+        const space = (args.space as string | undefined) || CONF_SPACE;
+        const content = args.content as string | undefined;
 
         if (!content) {
           throw new Error("必须提供 content");
         }
 
-        const result = await createPage(
-          space,
-          args.title,
-          content,
-          args.parentId
-        );
+        const result = await createPage(space ?? "", args.title as string, content, (args.parentId as string) ?? null);
 
         return {
           content: [
@@ -560,21 +623,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "confluence_update_page": {
-        let page;
-        
+        let page: ConfluencePage | undefined;
+
         if (args.pageId) {
-          page = await getPageById(args.pageId);
+          page = await getPageById(args.pageId as string);
         } else {
-          const space = args.space || CONF_SPACE;
-          page = await getPage(space, args.title);
+          const space = (args.space as string | undefined) || CONF_SPACE;
+          page = await getPage(space ?? "", args.title as string);
           if (!page) {
             throw new Error(`页面不存在: ${args.title}`);
           }
         }
 
-        const content = args.content;
-
-        const result = await updatePage(page, content, args.newTitle);
+        const content = args.content as string;
+        const result = await updatePage(page, content, (args.newTitle as string) ?? null);
 
         return {
           content: [
@@ -587,16 +649,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "confluence_upsert_page": {
-        const space = args.space || CONF_SPACE;
-        let content = args.content;
+        const space = (args.space as string | undefined) || CONF_SPACE;
+        const content = args.content as string | undefined;
 
         if (!content) {
           throw new Error("必须提供 content");
         }
 
-        const existingPage = await getPage(space, args.title);
+        const existingPage = await getPage(space ?? "", args.title as string);
 
-        let result;
+        let result: ConfluencePage;
         if (existingPage) {
           result = await updatePage(existingPage, content);
           return {
@@ -607,27 +669,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               },
             ],
           };
-        } else {
-          result = await createPage(space, args.title, content, args.parentId);
-          return {
-            content: [
-              {
-                type: "text",
-                text: `✅ 页面创建成功！\n\nID: ${result.id}\n标题: ${result.title}\nURL: ${CONF_BASE_URL}${result._links.webui}`,
-              },
-            ],
-          };
         }
+
+        result = await createPage(space ?? "", args.title as string, content, (args.parentId as string) ?? null);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `✅ 页面创建成功！\n\nID: ${result.id}\n标题: ${result.title}\nURL: ${CONF_BASE_URL}${result._links.webui}`,
+            },
+          ],
+        };
       }
 
       case "confluence_get_page": {
-        let page;
-        
+        let page: ConfluencePage | undefined;
+
         if (args.pageId) {
-          page = await getPageById(args.pageId);
+          page = await getPageById(args.pageId as string);
         } else {
-          const space = args.space || CONF_SPACE;
-          page = await getPage(space, args.title);
+          const space = (args.space as string | undefined) || CONF_SPACE;
+          page = await getPage(space ?? "", args.title as string);
         }
 
         if (!page) {
@@ -656,7 +718,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "confluence_delete_page": {
-        const result = await deletePage(args.pageId);
+        await deletePage(args.pageId as string);
         return {
           content: [
             {
@@ -668,11 +730,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "confluence_search_pages": {
-        const results = await searchPages(
-          args.space,
-          args.query,
-          args.limit || 25
-        );
+        const results = await searchPages(args.space as string | undefined, args.query as string, (args.limit as number) || 25);
 
         const formatted = results.map((p) => ({
           id: p.id,
@@ -693,7 +751,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "confluence_get_child_pages": {
-        const children = await getChildPages(args.parentId, args.limit || 50);
+        const children = await getChildPages(args.parentId as string, (args.limit as number) || 50);
 
         const formatted = children.map((p) => ({
           id: p.id,
@@ -713,7 +771,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "confluence_get_page_history": {
-        const history = await getPageHistory(args.pageId, args.limit || 10);
+        const history = await getPageHistory(args.pageId as string, (args.limit as number) || 10);
         return {
           content: [
             {
@@ -726,10 +784,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "confluence_build_code_macro": {
         const macro = buildCodeMacro({
-          code: args.code,
-          language: args.language,
-          linenumbers: args.linenumbers ?? false,
-          collapse: args.collapse ?? false,
+          code: args.code as string,
+          language: (args.language as string) ?? undefined,
+          linenumbers: (args.linenumbers as boolean) ?? false,
+          collapse: (args.collapse as boolean) ?? false,
         });
         return {
           content: [
@@ -745,11 +803,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error(`未知的工具: ${name}`);
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     return {
       content: [
         {
           type: "text",
-          text: `❌ 错误: ${error.message}`,
+          text: `❌ 错误: ${message}`,
         },
       ],
       isError: true,
@@ -758,7 +817,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 // 启动服务器
-async function main() {
+async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("Confluence (KMS) MCP Server 已启动");
@@ -768,3 +827,5 @@ main().catch((error) => {
   console.error("服务器错误:", error);
   process.exit(1);
 });
+
+
