@@ -16,12 +16,6 @@
 - 获取子页面列表
 - 查看页面历史
 
-✅ **模板系统**
-- 列出所有可用模板
-- 加载模板内容
-- 保存新模板
-- 创建页面时使用模板
-
 ✅ **Space 管理**
 - 列出所有可访问的 Spaces
 - 支持 global 和 personal Space
@@ -142,7 +136,6 @@ MCP Server 提供以下工具供 AI 使用：
 - `title` (必需): 页面标题
 - `space` (可选): Space Key，默认使用环境变量
 - `content` (可选): 页面内容（HTML）
-- `template` (可选): 模板名称
 - `parentId` (可选): 父页面 ID
 
 #### `confluence_update_page`
@@ -153,7 +146,6 @@ MCP Server 提供以下工具供 AI 使用：
 - `pageId` (可选): 页面 ID
 - `space` (可选): Space Key
 - `content` (可选): 新内容
-- `template` (可选): 模板名称
 - `newTitle` (可选): 新标题
 
 #### `confluence_upsert_page`
@@ -163,7 +155,6 @@ MCP Server 提供以下工具供 AI 使用：
 - `title` (必需): 页面标题
 - `space` (可选): Space Key
 - `content` (可选): 页面内容
-- `template` (可选): 模板名称
 - `parentId` (可选): 父页面 ID
 
 #### `confluence_get_page`
@@ -204,23 +195,10 @@ MCP Server 提供以下工具供 AI 使用：
 - `pageId` (必需): 页面 ID
 - `limit` (可选): 历史记录数量，默认 10
 
-### 📝 模板管理
+### 🧩 宏辅助
 
-#### `confluence_list_templates`
-列出所有可用模板
-
-#### `confluence_load_template`
-加载模板内容
-
-**参数：**
-- `templateName` (必需): 模板名称（不含 .html）
-
-#### `confluence_save_template`
-保存新模板
-
-**参数：**
-- `templateName` (必需): 模板名称
-- `content` (必需): 模板内容（HTML）
+#### `confluence_build_code_macro`
+生成 Confluence (KMS) 的代码宏（storage format HTML），用于安全插入代码块
 
 ## 使用示例
 
@@ -229,7 +207,11 @@ MCP Server 提供以下工具供 AI 使用：
 ### 示例 1：创建新页面
 
 ```
-请帮我在 Confluence 中创建一个新页面，标题是"产品需求文档"，使用 template 模板
+请帮我在 Confluence 中创建一个新页面，标题是"产品需求文档"，内容包括：
+## 背景
+...
+## 需求
+...
 ```
 
 ### 示例 2：更新现有页面
@@ -250,45 +232,6 @@ MCP Server 提供以下工具供 AI 使用：
 列出我可以访问的所有 Confluence Spaces
 ```
 
-### 示例 5：使用模板创建页面
-
-```
-创建一个技术评审文档，标题是"后端 API 评审"，使用已有的评审模板
-```
-
-## 模板系统
-
-### 模板存储位置
-
-模板文件存储在 `templates/` 目录下，文件名格式：`模板名.html`
-
-### 创建新模板
-
-你可以通过以下方式创建模板：
-
-1. **手动创建：** 在 `templates/` 目录下创建 `.html` 文件
-2. **通过 MCP：** 使用 `confluence_save_template` 工具
-3. **通过 AI：** 让 AI 助手帮你创建模板
-
-### 模板内容格式
-
-模板使用 Confluence Storage Format（HTML）。示例：
-
-```html
-<h1>项目名称</h1>
-<h2>背景</h2>
-<p>项目背景描述...</p>
-
-<h2>目标</h2>
-<ul>
-  <li>目标1</li>
-  <li>目标2</li>
-</ul>
-
-<h2>技术方案</h2>
-<p>技术方案描述...</p>
-```
-
 ## 常见问题
 
 ### 1. MCP Server 无法启动
@@ -307,10 +250,6 @@ MCP Server 提供以下工具供 AI 使用：
 ### 3. 找不到 Space
 
 使用 `confluence_list_spaces` 工具查看所有可访问的 Spaces，确保使用正确的 Space Key。
-
-### 4. 模板不存在
-
-使用 `confluence_list_templates` 查看所有可用模板，确保模板文件存在于 `templates/` 目录。
 
 ## 开发和调试
 

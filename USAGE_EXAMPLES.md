@@ -33,16 +33,21 @@
 
 ---
 
-### 2. 创建新页面（使用模板）
+### 2. 创建新页面（自定义内容）
 
 **你的提问：**
 ```
-在 Confluence 创建一个技术设计文档，标题是"用户认证系统设计"，使用 tech-design 模板
+在 Confluence 创建一个技术设计文档，标题是"用户认证系统设计"，内容包括：
+## 背景
+...
+## 架构
+...
+## API
+...
 ```
 
 **AI 会做什么：**
 - 调用 `confluence_create_page` 工具
-- 使用 `tech-design` 模板创建页面
 - 标题设置为"用户认证系统设计"
 
 **预期结果：**
@@ -56,15 +61,20 @@ URL: https://your-instance.atlassian.net/wiki/spaces/TECH/pages/123456789
 
 ---
 
-### 3. 创建会议纪要
+### 3. 创建会议纪要（自定义内容）
 
 **你的提问：**
 ```
-帮我创建一个会议纪要，标题是"2024年度技术规划会议"，使用 meeting-notes 模板
+帮我创建一个会议纪要，标题是"2024年度技术规划会议"，内容包括：
+## 议题
+- ...
+## 结论
+- ...
+## 待办
+- ...
 ```
 
 **AI 会做什么：**
-- 使用 `meeting-notes` 模板
 - 创建标准格式的会议纪要页面
 
 ---
@@ -172,84 +182,6 @@ URL: https://your-instance.atlassian.net/wiki/spaces/TECH/pages/123456789
 
 ---
 
-### 11. 使用新模板更新页面
-
-**你的提问：**
-```
-用 code-review 模板更新页面 ID 123456789
-```
-
-**AI 会做什么：**
-- 加载 `code-review` 模板
-- 替换页面内容为模板内容
-
----
-
-## 📝 模板管理
-
-### 12. 查看所有可用模板
-
-**你的提问：**
-```
-列出所有可用的 Confluence 页面模板
-```
-
-**预期结果：**
-```json
-[
-  {
-    "name": "template",
-    "path": "/path/to/templates/template.html"
-  },
-  {
-    "name": "meeting-notes",
-    "path": "/path/to/templates/meeting-notes.html"
-  },
-  {
-    "name": "tech-design",
-    "path": "/path/to/templates/tech-design.html"
-  },
-  {
-    "name": "code-review",
-    "path": "/path/to/templates/code-review.html"
-  }
-]
-```
-
----
-
-### 13. 查看模板内容
-
-**你的提问：**
-```
-显示 tech-design 模板的内容
-```
-
-**AI 会做什么：**
-- 调用 `confluence_load_template` 工具
-- 返回模板的 HTML 内容
-
----
-
-### 14. 创建新模板
-
-**你的提问：**
-```
-创建一个新的项目立项模板，包括：
-- 项目背景
-- 项目目标
-- 预期收益
-- 资源需求
-- 风险评估
-```
-
-**AI 会做什么：**
-1. 根据你的要求生成模板 HTML
-2. 调用 `confluence_save_template` 保存模板
-3. 模板名称如 "project-proposal"
-
----
-
 ## 🎯 高级用法
 
 ### 15. 创建带层级的页面
@@ -273,12 +205,15 @@ URL: https://your-instance.atlassian.net/wiki/spaces/TECH/pages/123456789
 2. 缓存架构设计
 3. 消息队列设计
 
-都放在 TECH Space 中，使用 tech-design 模板
+都放在 TECH Space 中，并按以下结构写入内容：
+## 背景
+...
+## 方案
+...
 ```
 
 **AI 会做什么：**
 - 循环调用 `confluence_create_page` 三次
-- 每次使用相同的模板
 - 创建三个独立的页面
 
 ---
@@ -320,7 +255,7 @@ URL: https://your-instance.atlassian.net/wiki/spaces/TECH/pages/123456789
 - 问题追踪表
 - 总体评价
 
-使用 code-review 模板，标题是"用户服务模块代码评审"
+标题是"用户服务模块代码评审"
 ```
 
 **AI 会做什么：**
@@ -421,16 +356,11 @@ DELETE /api/users/:id - 删除用户
 2. **提供必要信息**
    - 页面标题
    - Space Key（如果不使用默认）
-   - 模板名称（如果需要）
 
 3. **描述清晰的内容结构**
    - 使用列表
    - 使用标题层级
    - 提供示例数据
-
-4. **利用模板**
-   - 优先使用预置模板
-   - 需要时可以请求创建新模板
 
 ### 常见问题
 
@@ -470,15 +400,6 @@ AI: [会自动更新刚才创建的页面]
 - docs/database.md -> 数据库设计
 - docs/deployment.md -> 部署指南
 ```
-
-### 3. 模板组合
-
-```
-创建一个页面，前半部分使用 meeting-notes 模板，
-后半部分添加技术方案的表格
-```
-
----
 
 ## 🔗 相关资源
 

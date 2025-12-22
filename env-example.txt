@@ -4,12 +4,6 @@ CONF_USERNAME=your-email@example.com
 CONF_PASSWORD=your-api-token
 CONF_SPACE=YOUR_SPACE_KEY
 
-# 自定义模板目录（可选）
-# CONF_TEMPLATES_DIR=/path/to/your/templates
-# CONF_TEMPLATES_DIR=../shared-templates
-# 支持相对路径（相对于项目根目录）或绝对路径
-# 如果不设置，将使用内置的 templates/ 目录
-
 # 注意：
 # 1. CONF_BASE_URL 不要包含尾部斜杠
 # 2. 对于 Atlassian Cloud，CONF_PASSWORD 应该是 API Token，不是密码

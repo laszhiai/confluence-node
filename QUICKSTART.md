@@ -18,9 +18,6 @@ CONF_BASE_URL=https://your-confluence-instance.atlassian.net
 CONF_USERNAME=your-email@example.com
 CONF_PASSWORD=your-api-token
 CONF_SPACE=YOUR_SPACE_KEY
-
-# 可选：自定义模板目录
-# CONF_TEMPLATES_DIR=/path/to/your/templates
 ```
 
 **获取 API Token：**
@@ -78,7 +75,11 @@ code %APPDATA%\Cursor\mcp.json
 
 #### 示例 2：创建新页面
 ```
-在 Confluence 中创建一个新页面，标题是"项目技术方案"，使用 tech-design 模板
+在 Confluence 中创建一个新页面，标题是"项目技术方案"，内容包括：
+## 背景
+...
+## 方案
+...
 ```
 
 #### 示例 3：更新页面
@@ -89,33 +90,6 @@ code %APPDATA%\Cursor\mcp.json
 #### 示例 4：搜索页面
 ```
 搜索包含"API"的所有 Confluence 页面
-```
-
-## 📝 可用模板
-
-系统已预置了以下模板：
-
-1. **template** - 基础模板（从你原有的 template.html 迁移）
-2. **meeting-notes** - 会议纪要模板
-3. **tech-design** - 技术设计文档模板
-4. **code-review** - 代码评审文档模板
-
-### 自定义模板目录
-
-你可以通过 `CONF_TEMPLATES_DIR` 环境变量指定自己的模板目录：
-
-```bash
-# .env 文件
-CONF_TEMPLATES_DIR=/path/to/your/templates
-```
-
-**优先级：** 自定义模板 > 内置模板 > 根目录模板
-
-详细说明请查看 [模板系统文档](./TEMPLATES_README.md)
-
-查看所有模板：
-```
-列出所有可用的 Confluence 模板
 ```
 
 ## 🛠️ 可用工具
@@ -133,9 +107,7 @@ MCP Server 提供了以下工具：
 | `confluence_search_pages` | 搜索页面 |
 | `confluence_get_child_pages` | 获取子页面 |
 | `confluence_get_page_history` | 查看页面历史 |
-| `confluence_list_templates` | 列出所有模板 |
-| `confluence_load_template` | 加载模板内容 |
-| `confluence_save_template` | 保存新模板 |
+| `confluence_build_code_macro` | 生成 Confluence Code Macro（storage format） |
 
 ## ❓ 常见问题
 

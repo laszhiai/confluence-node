@@ -6,10 +6,10 @@
 
 - 🤖 **AI 驱动**：在 Cursor 中通过自然语言操作 Confluence (KMS)
 - 📄 **页面管理**：创建、更新、删除、搜索 Confluence 页面
-- 📋 **灵活模板系统**：预置常用模板，支持自定义模板目录，多级优先级
 - 🔍 **强大搜索**：支持全文搜索、子页面查询、历史版本查看
 - 🏢 **Space 管理**：列出和管理所有可访问的 Spaces
 - 🔒 **安全可靠**：使用 API Token 认证，支持所有 Confluence Cloud 功能
+ - 🧩 **宏辅助**：生成 Confluence Code Macro（storage format），安全插入代码块
 
 ## 📦 项目结构
 
@@ -18,20 +18,6 @@ confluence-node/
 ├── index.js                 # 原始脚本（保留）
 ├── mcp-server.js           # MCP Server 实现
 ├── test-connection.js      # 连接测试脚本
-├── template.html           # 原始模板（保留）
-├── templates/              # 内置模板目录
-│   ├── template.html      # 基础模板
-│   ├── meeting-notes.html # 会议纪要模板
-│   ├── tech-design.html   # 技术设计模板
-│   └── code-review.html   # 代码评审模板
-├── examples/               # 示例目录
-│   └── custom-templates-example/  # 自定义模板示例
-│       ├── README.md
-│       ├── .env.example
-│       └── templates/
-│           ├── sprint-planning.html
-│           ├── weekly-report.html
-│           └── api-specification.html
 ├── package.json
 ├── .env                    # 配置文件（需要创建）
 ├── env-example.txt         # 配置示例
@@ -39,7 +25,6 @@ confluence-node/
 ├── README.md               # 项目总览（本文件）
 ├── QUICKSTART.md          # 快速开始指南
 ├── MCP_README.md          # MCP 详细文档
-├── TEMPLATES_README.md    # 模板系统文档
 ├── USAGE_EXAMPLES.md      # 使用示例
 ├── KMS_ALIAS_README.md    # KMS 别名说明
 └── CHANGELOG.md           # 更新日志
@@ -62,8 +47,6 @@ CONF_BASE_URL=https://your-confluence-instance.atlassian.net
 CONF_USERNAME=your-email@example.com
 CONF_PASSWORD=your-api-token
 CONF_SPACE=YOUR_SPACE_KEY
-# 可选：自定义模板目录
-# CONF_TEMPLATES_DIR=/path/to/your/templates
 ```
 
 ### 3️⃣ 配置 Cursor
@@ -117,35 +100,7 @@ CONF_SPACE=YOUR_SPACE_KEY
 | **搜索** | `confluence_search_pages` | 搜索页面 |
 |  | `confluence_get_child_pages` | 获取子页面 |
 |  | `confluence_get_page_history` | 查看页面历史 |
-| **模板** | `confluence_list_templates` | 列出所有模板 |
-|  | `confluence_load_template` | 加载模板内容 |
-|  | `confluence_save_template` | 保存新模板 |
-
-## 📝 模板系统
-
-### 预置模板
-
-- **template** - 基础通用模板
-- **meeting-notes** - 会议纪要（包含议题、结论、待办事项）
-- **tech-design** - 技术设计文档（包含架构、API、测试计划）
-- **code-review** - 代码评审文档（包含评审维度、问题追踪）
-
-### 自定义模板目录
-
-支持设置自定义模板路径，提供更好的拓展性：
-
-```bash
-# .env
-CONF_TEMPLATES_DIR=/path/to/your/templates
-```
-
-**特性：**
-- ✅ 支持绝对路径和相对路径
-- ✅ 自定义模板优先级高于内置模板
-- ✅ 团队可以共享统一的模板库
-- ✅ 支持模板版本控制
-
-详细说明：[模板系统文档](./TEMPLATES_README.md)
+| **宏** | `confluence_build_code_macro` | 生成 Confluence Code Macro（storage format） |
 
 ## 💡 使用示例
 
@@ -230,4 +185,4 @@ MIT
 ---
 
 **快速链接：**
-- [快速开始](./QUICKSTART.md) | [完整文档](./MCP_README.md) | [模板系统](./TEMPLATES_README.md) | [使用示例](./USAGE_EXAMPLES.md)
+- [快速开始](./QUICKSTART.md) | [完整文档](./MCP_README.md) | [使用示例](./USAGE_EXAMPLES.md)

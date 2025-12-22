@@ -5,17 +5,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  ListResourcesRequestSchema,
-  ReadResourceRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import axios from "axios";
 import dotenv from "dotenv";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -23,8 +15,7 @@ const {
   CONF_BASE_URL, 
   CONF_USERNAME, 
   CONF_PASSWORD, 
-  CONF_SPACE,
-  CONF_TEMPLATES_DIR // 自定义模板目录路径（可选）
+  CONF_SPACE
 } = process.env;
 
 // 创建 axios 实例
@@ -185,120 +176,6 @@ async function getPageHistory(pageId, limit = 10) {
   }
 }
 
-// ===== 模板管理 =====
-
-/**
- * 获取所有模板目录（按优先级排序）
- * 1. 自定义目录（CONF_TEMPLATES_DIR）
- * 2. 内置 templates/ 目录
- * 3. 根目录（兼容旧版）
- */
-function getTemplateDirs() {
-  const dirs = [];
-  
-  // 1. 自定义模板目录（最高优先级）
-  if (CONF_TEMPLATES_DIR) {
-    const customDir = path.isAbsolute(CONF_TEMPLATES_DIR)
-      ? CONF_TEMPLATES_DIR
-      : path.join(__dirname, CONF_TEMPLATES_DIR);
-    dirs.push({ path: customDir, type: 'custom' });
-  }
-  
-  // 2. 内置 templates/ 目录
-  dirs.push({ 
-    path: path.join(__dirname, "templates"), 
-    type: 'builtin' 
-  });
-  
-  // 3. 根目录（向后兼容）
-  dirs.push({ 
-    path: __dirname, 
-    type: 'root' 
-  });
-  
-  return dirs;
-}
-
-function listTemplates() {
-  const templateDirs = getTemplateDirs();
-  const templates = new Map(); // 使用 Map 去重，保留优先级高的
-  
-  for (const dir of templateDirs) {
-    if (!fs.existsSync(dir.path)) {
-      if (dir.type === 'builtin') {
-        // 确保内置目录存在
-        fs.mkdirSync(dir.path, { recursive: true });
-      }
-      continue;
-    }
-    
-    try {
-      const files = fs.readdirSync(dir.path).filter((f) => f.endsWith(".html"));
-      
-      for (const file of files) {
-        const name = file.replace(".html", "");
-        
-        // 如果模板名已存在，保留优先级更高的（先找到的）
-        if (!templates.has(name)) {
-          templates.set(name, {
-            name,
-            path: path.join(dir.path, file),
-            source: dir.type,
-          });
-        }
-      }
-    } catch (error) {
-      console.error(`读取模板目录失败 ${dir.path}:`, error.message);
-    }
-  }
-  
-  return Array.from(templates.values());
-}
-
-function loadTemplate(templateName) {
-  const templateDirs = getTemplateDirs();
-  
-  // 按优先级查找模板
-  for (const dir of templateDirs) {
-    if (!fs.existsSync(dir.path)) {
-      continue;
-    }
-    
-    const templatePath = path.join(dir.path, `${templateName}.html`);
-    if (fs.existsSync(templatePath)) {
-      return fs.readFileSync(templatePath, "utf-8");
-    }
-  }
-  
-  throw new Error(`模板不存在: ${templateName}`);
-}
-
-function saveTemplate(templateName, content) {
-  // 保存到自定义目录（如果配置了），否则保存到内置目录
-  let targetDir;
-  
-  if (CONF_TEMPLATES_DIR) {
-    targetDir = path.isAbsolute(CONF_TEMPLATES_DIR)
-      ? CONF_TEMPLATES_DIR
-      : path.join(__dirname, CONF_TEMPLATES_DIR);
-  } else {
-    targetDir = path.join(__dirname, "templates");
-  }
-  
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true });
-  }
-
-  const templatePath = path.join(targetDir, `${templateName}.html`);
-  fs.writeFileSync(templatePath, content, "utf-8");
-  
-  return { 
-    success: true, 
-    path: templatePath,
-    directory: targetDir 
-  };
-}
-
 // ===== Confluence/KMS 宏（macro）辅助 =====
 
 /**
@@ -405,7 +282,6 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
-      resources: {},
     },
   }
 );
@@ -447,10 +323,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "页面内容（Confluence Storage Format HTML）",
             },
-            template: {
-              type: "string",
-              description: "可选：使用的模板名称（不含 .html 后缀）",
-            },
             parentId: {
               type: "string",
               description: "可选：父页面 ID，用于创建子页面",
@@ -485,10 +357,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "可选：新的页面标题",
             },
-            template: {
-              type: "string",
-              description: "可选：使用的模板名称",
-            },
           },
         },
       },
@@ -509,10 +377,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             content: {
               type: "string",
               description: "页面内容",
-            },
-            template: {
-              type: "string",
-              description: "可选：使用的模板名称",
             },
             parentId: {
               type: "string",
@@ -619,46 +483,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
-        name: "confluence_list_templates",
-        description: "列出所有可用的 Confluence (KMS) 页面模板。KMS 是公司内部 Confluence 系统的别名。",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "confluence_load_template",
-        description: "加载指定 Confluence (KMS) 模板的内容。KMS 是公司内部 Confluence 系统的别名。",
-        inputSchema: {
-          type: "object",
-          properties: {
-            templateName: {
-              type: "string",
-              description: "模板名称（不含 .html 后缀）",
-            },
-          },
-          required: ["templateName"],
-        },
-      },
-      {
-        name: "confluence_save_template",
-        description: "保存新的 Confluence (KMS) 模板。KMS 是公司内部 Confluence 系统的别名。",
-        inputSchema: {
-          type: "object",
-          properties: {
-            templateName: {
-              type: "string",
-              description: "模板名称（不含 .html 后缀）",
-            },
-            content: {
-              type: "string",
-              description: "模板内容（HTML）",
-            },
-          },
-          required: ["templateName", "content"],
-        },
-      },
-      {
         name: "confluence_build_code_macro",
         description:
           "生成 Confluence (KMS) 的代码宏（storage format HTML），用于安全插入代码块，避免“代码宏出错: InvalidValueException”。",
@@ -714,12 +538,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const space = args.space || CONF_SPACE;
         let content = args.content;
 
-        if (args.template) {
-          content = loadTemplate(args.template);
-        }
-
         if (!content) {
-          throw new Error("必须提供 content 或 template");
+          throw new Error("必须提供 content");
         }
 
         const result = await createPage(
@@ -752,10 +572,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
         }
 
-        let content = args.content;
-        if (args.template) {
-          content = loadTemplate(args.template);
-        }
+        const content = args.content;
 
         const result = await updatePage(page, content, args.newTitle);
 
@@ -773,12 +590,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const space = args.space || CONF_SPACE;
         let content = args.content;
 
-        if (args.template) {
-          content = loadTemplate(args.template);
-        }
-
         if (!content) {
-          throw new Error("必须提供 content 或 template");
+          throw new Error("必须提供 content");
         }
 
         const existingPage = await getPage(space, args.title);
@@ -911,49 +724,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case "confluence_list_templates": {
-        const templates = listTemplates();
-        
-        // 添加模板路径配置信息
-        const info = {
-          customTemplatesDir: CONF_TEMPLATES_DIR || "未配置（使用内置路径）",
-          templates: templates,
-        };
-        
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify(info, null, 2),
-            },
-          ],
-        };
-      }
-
-      case "confluence_load_template": {
-        const content = loadTemplate(args.templateName);
-        return {
-          content: [
-            {
-              type: "text",
-              text: content,
-            },
-          ],
-        };
-      }
-
-      case "confluence_save_template": {
-        const result = saveTemplate(args.templateName, args.content);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `✅ 模板已保存\n\n文件路径: ${result.path}\n保存目录: ${result.directory}`,
-            },
-          ],
-        };
-      }
-
       case "confluence_build_code_macro": {
         const macro = buildCodeMacro({
           code: args.code,
@@ -985,42 +755,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       isError: true,
     };
   }
-});
-
-// 列出资源
-server.setRequestHandler(ListResourcesRequestSchema, async () => {
-  const templates = listTemplates();
-  
-  return {
-    resources: templates.map((t) => ({
-      uri: `template://${t.name}`,
-      name: `Template: ${t.name}`,
-      mimeType: "text/html",
-      description: `Confluence (KMS) 页面模板: ${t.name}`,
-    })),
-  };
-});
-
-// 读取资源
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-  const uri = request.params.uri;
-  
-  if (uri.startsWith("template://")) {
-    const templateName = uri.replace("template://", "");
-    const content = loadTemplate(templateName);
-    
-    return {
-      contents: [
-        {
-          uri,
-          mimeType: "text/html",
-          text: content,
-        },
-      ],
-    };
-  }
-  
-  throw new Error(`未知的资源 URI: ${uri}`);
 });
 
 // 启动服务器
