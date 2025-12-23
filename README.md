@@ -108,6 +108,7 @@ npm run build
 | **搜索** | `confluence_search_pages` | 搜索页面 |
 |  | `confluence_get_child_pages` | 获取子页面 |
 |  | `confluence_get_page_history` | 查看页面历史 |
+| **附件** | `confluence_upload_attachment` | 上传附件到指定页面（filePath 或 base64） |
 | **宏** | `confluence_build_code_macro` | 生成 Code Macro（storage format HTML） |
 
 ## 🔧 开发与调试

@@ -4,6 +4,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import axios from "axios";
 import dotenv from "dotenv";
+import fs from "node:fs";
+import path from "node:path";
 dotenv.config();
 const { CONF_BASE_URL, CONF_USERNAME, CONF_PASSWORD, CONF_SPACE } = process.env;
 // 创建 axios 实例
@@ -165,6 +167,48 @@ async function getPageHistory(pageId, limit = 10) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`获取页面历史失败: ${message}`);
     }
+}
+function buildBasicAuthHeader(username, password) {
+    const token = Buffer.from(`${username}:${password}`, "utf8").toString("base64");
+    return `Basic ${token}`;
+}
+async function uploadAttachmentToPage({ pageId, fileName, fileArrayBuffer, comment, }) {
+    if (!CONF_BASE_URL)
+        throw new Error("缺少环境变量 CONF_BASE_URL");
+    if (!CONF_USERNAME)
+        throw new Error("缺少环境变量 CONF_USERNAME");
+    if (!CONF_PASSWORD)
+        throw new Error("缺少环境变量 CONF_PASSWORD");
+    const url = `${CONF_BASE_URL}/rest/api/content/${pageId}/child/attachment`;
+    const form = new FormData();
+    const blob = new Blob([fileArrayBuffer], { type: "application/octet-stream" });
+    form.append("file", blob, fileName);
+    if (comment)
+        form.append("comment", comment);
+    const res = await fetch(url, {
+        method: "POST",
+        headers: {
+            Authorization: buildBasicAuthHeader(CONF_USERNAME, CONF_PASSWORD),
+            "X-Atlassian-Token": "no-check",
+            // 注意：不要手动设置 Content-Type，让 fetch 自动带 boundary
+        },
+        body: form,
+    });
+    if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(`上传附件失败: HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ""}`);
+    }
+    const data = (await res.json());
+    const first = data?.results?.[0] ?? data?.results ?? data;
+    const download = first?._links?.download ? `${CONF_BASE_URL}${first._links.download}` : undefined;
+    const webui = first?._links?.webui ? `${CONF_BASE_URL}${first._links.webui}` : undefined;
+    return {
+        id: first?.id,
+        title: first?.title ?? first?.filename,
+        mediaType: first?.metadata?.mediaType,
+        download,
+        webui,
+    };
 }
 // ===== Confluence/KMS 宏（macro）辅助 =====
 /**
@@ -460,6 +504,36 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                 },
             },
             {
+                name: "confluence_upload_attachment",
+                description: "上传附件到指定 Confluence (KMS) 页面。支持本地文件路径(filePath)或 base64 内容(contentBase64)。注意：需要页面编辑权限。",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        pageId: {
+                            type: "string",
+                            description: "要上传附件的页面 ID",
+                        },
+                        filePath: {
+                            type: "string",
+                            description: "本地文件路径（优先使用）。建议使用绝对路径。",
+                        },
+                        filename: {
+                            type: "string",
+                            description: "附件文件名（当使用 contentBase64 时必填；使用 filePath 时可选）",
+                        },
+                        contentBase64: {
+                            type: "string",
+                            description: "附件内容 base64（与 filename 配合使用；与 filePath 二选一）",
+                        },
+                        comment: {
+                            type: "string",
+                            description: "可选：附件备注",
+                        },
+                    },
+                    required: ["pageId"],
+                },
+            },
+            {
                 name: "confluence_build_code_macro",
                 description: "生成 Confluence (KMS) 的代码宏（storage format HTML），用于安全插入代码块，避免“代码宏出错: InvalidValueException”。",
                 inputSchema: {
@@ -656,6 +730,50 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         {
                             type: "text",
                             text: JSON.stringify(history, null, 2),
+                        },
+                    ],
+                };
+            }
+            case "confluence_upload_attachment": {
+                if (!args.pageId)
+                    throw new Error("必须提供 pageId");
+                let fileName;
+                let fileArrayBuffer;
+                if (args.filePath) {
+                    const p = String(args.filePath);
+                    if (!fs.existsSync(p)) {
+                        throw new Error(`文件不存在: ${p}`);
+                    }
+                    const buf = fs.readFileSync(p);
+                    fileArrayBuffer = Uint8Array.from(buf).buffer; // 确保是 ArrayBuffer（避免 ArrayBufferLike/SharedArrayBuffer 类型问题）
+                    fileName = args.filename || path.basename(p);
+                }
+                else if (args.contentBase64) {
+                    fileName = args.filename;
+                    if (!fileName)
+                        throw new Error("使用 contentBase64 时必须提供 filename");
+                    const buf = Buffer.from(String(args.contentBase64), "base64");
+                    fileArrayBuffer = Uint8Array.from(buf).buffer;
+                }
+                else {
+                    throw new Error("必须提供 filePath 或 contentBase64（二选一）");
+                }
+                const result = await uploadAttachmentToPage({
+                    pageId: String(args.pageId),
+                    fileName,
+                    fileArrayBuffer: fileArrayBuffer,
+                    comment: args.comment ?? undefined,
+                });
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `✅ 附件上传成功！\n\n` +
+                                `页面ID: ${String(args.pageId)}\n` +
+                                (result.id ? `附件ID: ${result.id}\n` : "") +
+                                (result.title ? `文件名: ${result.title}\n` : "") +
+                                (result.download ? `下载: ${result.download}\n` : "") +
+                                (result.webui ? `页面: ${result.webui}\n` : ""),
                         },
                     ],
                 };
