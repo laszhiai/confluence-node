@@ -41,6 +41,14 @@ type ConfluenceSearchResult = {
   _links: { webui: string };
 };
 
+type ConfluenceComment = {
+  id: string;
+  type: "comment";
+  title?: string;
+  body?: { storage?: { value?: string } };
+  _links?: { webui?: string };
+};
+
 // ===== Confluence API 函数 =====
 
 async function getPage(space: string, title: string): Promise<ConfluencePage | undefined> {
@@ -202,6 +210,40 @@ async function getPageHistory(pageId: string, limit = 10): Promise<unknown> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`获取页面历史失败: ${message}`);
+  }
+}
+
+async function addCommentToPage({
+  pageId,
+  commentHtml,
+  parentCommentId,
+}: {
+  pageId: string;
+  commentHtml: string;
+  parentCommentId?: string;
+}): Promise<ConfluenceComment> {
+  try {
+    // 兼容性更好的方式：直接通过 /content 创建 comment（一些 Confluence 版本对 /content/{id}/child/comment 的 POST 会返回 405）
+    const payload: Record<string, unknown> = {
+      type: "comment",
+      title: "comment",
+      container: { type: "page", id: pageId },
+      body: {
+        storage: {
+          value: commentHtml,
+          representation: "storage",
+        },
+      },
+    };
+    if (parentCommentId) {
+      payload.ancestors = [{ id: parentCommentId }];
+    }
+
+    const res = await api.post<ConfluenceComment>("/content", payload);
+    return res.data;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`添加评论失败: ${message}`);
   }
 }
 
@@ -608,6 +650,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         },
       },
       {
+        name: "confluence_add_comment",
+        description: "在页面评论区添加评论（可选：回复某条评论）。KMS 是公司内部 Confluence 系统的别名。",
+        inputSchema: {
+          type: "object",
+          properties: {
+            pageId: {
+              type: "string",
+              description: "要评论的页面 ID",
+            },
+            content: {
+              type: "string",
+              description: "评论内容（Confluence Storage Format HTML；纯文本也可，但需自行转义/包裹）",
+            },
+            parentCommentId: {
+              type: "string",
+              description: "可选：父评论 ID（用于回复某条评论；不传则为页面下的顶层评论）",
+            },
+          },
+          required: ["pageId", "content"],
+        },
+      },
+      {
         name: "confluence_upload_attachment",
         description:
           "上传附件到指定 Confluence (KMS) 页面。支持本地文件路径(filePath)或 base64 内容(contentBase64)。注意：需要页面编辑权限。",
@@ -684,6 +748,8 @@ type CallToolArgs = Record<string, unknown> & {
   query?: string;
   limit?: number;
   newTitle?: string;
+  // comment
+  parentCommentId?: string;
   // attachment
   filePath?: string;
   filename?: string;
@@ -983,6 +1049,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest)
             {
               type: "text",
               text: JSON.stringify(history, null, 2),
+            },
+          ],
+        };
+      }
+
+      case "confluence_add_comment": {
+        if (!CONF_BASE_URL) throw new Error("缺少环境变量 CONF_BASE_URL");
+        if (!args.pageId) throw new Error("必须提供 pageId");
+        if (!args.content) throw new Error("必须提供 content");
+
+        const result = await addCommentToPage({
+          pageId: String(args.pageId),
+          commentHtml: String(args.content),
+          parentCommentId: (args.parentCommentId as string | undefined) ?? undefined,
+        });
+
+        const webui = result?._links?.webui ? `${CONF_BASE_URL}${result._links.webui}` : undefined;
+
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `✅ 评论添加成功！\n\n` +
+                `页面ID: ${String(args.pageId)}\n` +
+                `评论ID: ${result.id}\n` +
+                (args.parentCommentId ? `父评论ID: ${String(args.parentCommentId)}\n` : "") +
+                (webui ? `URL: ${webui}\n` : ""),
             },
           ],
         };
