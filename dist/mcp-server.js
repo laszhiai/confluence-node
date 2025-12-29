@@ -168,6 +168,108 @@ async function getPageHistory(pageId, limit = 10) {
         throw new Error(`获取页面历史失败: ${message}`);
     }
 }
+async function getPageComments(pageId, limit = 50) {
+    try {
+        const res = await api.get(`/content/${pageId}/child/comment`, {
+            params: {
+                limit,
+                expand: "body.storage,version,ancestors",
+                depth: "all", // 获取所有层级的评论（包括回复）
+            },
+        });
+        return res.data.results;
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`获取页面评论失败: ${message}`);
+    }
+}
+async function setPageRestriction({ pageId, restrictionType, username, }) {
+    const targetUser = username || CONF_USERNAME;
+    if (!targetUser && restrictionType !== "none") {
+        throw new Error("设置权限需要指定用户名或配置 CONF_USERNAME 环境变量");
+    }
+    // 创建一个使用 experimental API 的 axios 实例
+    const experimentalApi = axios.create({
+        baseURL: `${CONF_BASE_URL}/rest/experimental`,
+        auth: {
+            username: CONF_USERNAME ?? "",
+            password: CONF_PASSWORD ?? "",
+        },
+        headers: {
+            "Content-Type": "application/json",
+        },
+    });
+    try {
+        if (restrictionType === "none") {
+            // 删除所有限制 - 无限制
+            // 先尝试删除 read 和 update 限制
+            await experimentalApi.delete(`/content/${pageId}/restriction/byOperation/read/user`).catch(() => { });
+            await experimentalApi.delete(`/content/${pageId}/restriction/byOperation/update/user`).catch(() => { });
+            // 也尝试标准 API
+            await api.delete(`/content/${pageId}/restriction`).catch(() => { });
+            return { success: true, message: "已移除所有页面限制，现在页面对所有人开放" };
+        }
+        // 先清除现有限制
+        await experimentalApi.delete(`/content/${pageId}/restriction/byOperation/read/user`).catch(() => { });
+        await experimentalApi.delete(`/content/${pageId}/restriction/byOperation/update/user`).catch(() => { });
+        // 构建限制数据（experimental API 格式）
+        const restrictions = [];
+        if (restrictionType === "view_only") {
+            // 只有自己能查看 - 设置 read 和 update 限制
+            restrictions.push({
+                operation: "read",
+                restrictions: {
+                    user: [{ type: "known", username: targetUser }],
+                    group: [],
+                },
+            });
+            restrictions.push({
+                operation: "update",
+                restrictions: {
+                    user: [{ type: "known", username: targetUser }],
+                    group: [],
+                },
+            });
+        }
+        else if (restrictionType === "edit_only") {
+            // 限制编辑 - 只设置 update 限制，所有人可查看
+            restrictions.push({
+                operation: "update",
+                restrictions: {
+                    user: [{ type: "known", username: targetUser }],
+                    group: [],
+                },
+            });
+        }
+        // 使用 experimental API (POST) 设置限制
+        const res = await experimentalApi.post(`/content/${pageId}/restriction`, restrictions);
+        const messageMap = {
+            none: "已移除所有页面限制",
+            edit_only: `已设置为仅 ${targetUser} 可编辑，其他人可查看`,
+            view_only: `已设置为仅 ${targetUser} 可查看和编辑`,
+        };
+        return {
+            success: true,
+            message: messageMap[restrictionType],
+            restrictions: res.data,
+        };
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`设置页面权限失败: ${message}`);
+    }
+}
+async function getPageRestrictions(pageId) {
+    try {
+        const res = await api.get(`/content/${pageId}/restriction`);
+        return res.data;
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`获取页面权限失败: ${message}`);
+    }
+}
 async function addCommentToPage({ pageId, commentHtml, parentCommentId, }) {
     try {
         // 兼容性更好的方式：直接通过 /content 创建 comment（一些 Confluence 版本对 /content/{id}/child/comment 的 POST 会返回 405）
@@ -626,6 +728,48 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     required: ["code"],
                 },
             },
+            {
+                name: "confluence_get_page_comments",
+                description: "获取指定 Confluence (KMS) 页面的所有评论（包括回复）。KMS 是公司内部 Confluence 系统的别名。",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        pageId: {
+                            type: "string",
+                            description: "页面 ID",
+                        },
+                        limit: {
+                            type: "number",
+                            description: "返回评论数量限制",
+                            default: 50,
+                        },
+                    },
+                    required: ["pageId"],
+                },
+            },
+            {
+                name: "confluence_set_page_restriction",
+                description: "设置 Confluence (KMS) 页面的访问权限。支持三种模式：无限制（所有人可访问）、限制编辑（所有人可查看但只有指定用户可编辑）、只有自己能查看（只有指定用户可查看和编辑）。",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        pageId: {
+                            type: "string",
+                            description: "页面 ID",
+                        },
+                        restrictionType: {
+                            type: "string",
+                            description: "权限类型：none（无限制）、edit_only（限制编辑，所有人可查看）、view_only（只有自己能查看和编辑）",
+                            enum: ["none", "edit_only", "view_only"],
+                        },
+                        username: {
+                            type: "string",
+                            description: "可选：指定用户名（默认使用当前登录用户）",
+                        },
+                    },
+                    required: ["pageId", "restrictionType"],
+                },
+            },
         ],
     };
 });
@@ -942,6 +1086,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         {
                             type: "text",
                             text: macro,
+                        },
+                    ],
+                };
+            }
+            case "confluence_get_page_comments": {
+                if (!args.pageId)
+                    throw new Error("必须提供 pageId");
+                const comments = await getPageComments(String(args.pageId), args.limit || 50);
+                const formatted = comments.map((c) => ({
+                    id: c.id,
+                    title: c.title,
+                    body: c.body?.storage?.value,
+                }));
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: comments.length > 0
+                                ? `共找到 ${comments.length} 条评论：\n\n${JSON.stringify(formatted, null, 2)}`
+                                : "该页面暂无评论",
+                        },
+                    ],
+                };
+            }
+            case "confluence_set_page_restriction": {
+                if (!args.pageId)
+                    throw new Error("必须提供 pageId");
+                if (!args.restrictionType)
+                    throw new Error("必须提供 restrictionType");
+                const result = await setPageRestriction({
+                    pageId: String(args.pageId),
+                    restrictionType: args.restrictionType,
+                    username: args.username ?? undefined,
+                });
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `✅ ${result.message}`,
                         },
                     ],
                 };
