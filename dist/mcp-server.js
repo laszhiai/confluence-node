@@ -184,6 +184,33 @@ async function getPageComments(pageId, limit = 50) {
         throw new Error(`获取页面评论失败: ${message}`);
     }
 }
+async function searchUserComments({ username, space, startDate, endDate, limit = 50, }) {
+    try {
+        // 使用 CQL 搜索用户的评论
+        let cql = `type=comment AND creator="${username}"`;
+        if (space) {
+            cql += ` AND space="${space}"`;
+        }
+        if (startDate) {
+            cql += ` AND created>="${startDate}"`;
+        }
+        if (endDate) {
+            cql += ` AND created<="${endDate}"`;
+        }
+        const res = await api.get("/content/search", {
+            params: {
+                cql,
+                limit,
+                expand: "body.storage,version,space,container",
+            },
+        });
+        return res.data.results;
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`搜索用户评论失败: ${message}`);
+    }
+}
 async function setPageRestriction({ pageId, restrictionType, username, }) {
     const targetUser = username || CONF_USERNAME;
     if (!targetUser && restrictionType !== "none") {
@@ -770,6 +797,37 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
                     required: ["pageId", "restrictionType"],
                 },
             },
+            {
+                name: "confluence_search_user_comments",
+                description: "搜索指定用户在 Confluence (KMS) 中发表的所有评论。可按 Space 和日期范围筛选。KMS 是公司内部 Confluence 系统的别名。",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        username: {
+                            type: "string",
+                            description: "用户名（评论作者）",
+                        },
+                        space: {
+                            type: "string",
+                            description: "可选：限制在指定 Space 中搜索",
+                        },
+                        startDate: {
+                            type: "string",
+                            description: "可选：开始日期（格式：YYYY-MM-DD），搜索该日期及之后的评论",
+                        },
+                        endDate: {
+                            type: "string",
+                            description: "可选：结束日期（格式：YYYY-MM-DD），搜索该日期及之前的评论",
+                        },
+                        limit: {
+                            type: "number",
+                            description: "返回结果数量限制",
+                            default: 50,
+                        },
+                    },
+                    required: ["username"],
+                },
+            },
         ],
     };
 });
@@ -1125,6 +1183,37 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                         {
                             type: "text",
                             text: `✅ ${result.message}`,
+                        },
+                    ],
+                };
+            }
+            case "confluence_search_user_comments": {
+                if (!args.username)
+                    throw new Error("必须提供 username");
+                const comments = await searchUserComments({
+                    username: String(args.username),
+                    space: args.space ?? undefined,
+                    startDate: args.startDate ?? undefined,
+                    endDate: args.endDate ?? undefined,
+                    limit: args.limit || 50,
+                });
+                const formatted = comments.map((c) => ({
+                    id: c.id,
+                    body: c.body?.storage?.value,
+                    container: c.container
+                        ? { id: c.container.id, title: c.container.title, type: c.container.type }
+                        : undefined,
+                    space: c.space ? { key: c.space.key, name: c.space.name } : undefined,
+                    createdAt: c.version?.when,
+                    url: c._links?.webui ? `${CONF_BASE_URL}${c._links.webui}` : undefined,
+                }));
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: comments.length > 0
+                                ? `共找到 ${comments.length} 条 ${args.username} 的评论：\n\n${JSON.stringify(formatted, null, 2)}`
+                                : `未找到用户 ${args.username} 的评论`,
                         },
                     ],
                 };
