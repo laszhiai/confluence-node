@@ -10,17 +10,45 @@ import path from "node:path";
 
 dotenv.config();
 
-const { CONF_BASE_URL, CONF_USERNAME, CONF_PASSWORD, CONF_SPACE } = process.env;
+const { CONF_BASE_URL, CONF_USERNAME, CONF_PASSWORD, CONF_SPACE, CONF_TOKEN } = process.env;
+
+// 判断是否使用 PAT (Personal Access Token) 认证
+const usePatAuth = Boolean(CONF_TOKEN);
+
+// 创建 axios 认证配置
+function getAxiosAuthConfig(): { auth?: { username: string; password: string }; headers?: Record<string, string> } {
+  if (usePatAuth) {
+    return {
+      headers: {
+        Authorization: `Bearer ${CONF_TOKEN}`,
+      },
+    };
+  }
+  return {
+    auth: {
+      username: CONF_USERNAME ?? "",
+      password: CONF_PASSWORD ?? "",
+    },
+  };
+}
+
+// 创建请求头认证配置（用于 fetch 等原生请求）
+function getAuthHeader(): string {
+  if (usePatAuth) {
+    return `Bearer ${CONF_TOKEN}`;
+  }
+  const token = Buffer.from(`${CONF_USERNAME}:${CONF_PASSWORD}`, "utf8").toString("base64");
+  return `Basic ${token}`;
+}
 
 // 创建 axios 实例
+const authConfig = getAxiosAuthConfig();
 const api = axios.create({
   baseURL: `${CONF_BASE_URL}/rest/api`,
-  auth: {
-    username: CONF_USERNAME ?? "",
-    password: CONF_PASSWORD ?? "",
-  },
+  ...authConfig,
   headers: {
     "Content-Type": "application/json",
+    ...authConfig.headers,
   },
 });
 
@@ -304,12 +332,10 @@ async function setPageRestriction({
   // 创建一个使用 experimental API 的 axios 实例
   const experimentalApi = axios.create({
     baseURL: `${CONF_BASE_URL}/rest/experimental`,
-    auth: {
-      username: CONF_USERNAME ?? "",
-      password: CONF_PASSWORD ?? "",
-    },
+    ...authConfig,
     headers: {
       "Content-Type": "application/json",
+      ...authConfig.headers,
     },
   });
 
@@ -438,11 +464,6 @@ type UploadAttachmentResult = {
   webui?: string;
 };
 
-function buildBasicAuthHeader(username: string, password: string): string {
-  const token = Buffer.from(`${username}:${password}`, "utf8").toString("base64");
-  return `Basic ${token}`;
-}
-
 async function uploadAttachmentToPage({
   pageId,
   fileName,
@@ -455,8 +476,9 @@ async function uploadAttachmentToPage({
   comment?: string;
 }): Promise<UploadAttachmentResult> {
   if (!CONF_BASE_URL) throw new Error("缺少环境变量 CONF_BASE_URL");
-  if (!CONF_USERNAME) throw new Error("缺少环境变量 CONF_USERNAME");
-  if (!CONF_PASSWORD) throw new Error("缺少环境变量 CONF_PASSWORD");
+  if (!usePatAuth && (!CONF_USERNAME || !CONF_PASSWORD)) {
+    throw new Error("缺少认证配置：请设置 CONF_TOKEN（PAT）或 CONF_USERNAME + CONF_PASSWORD");
+  }
 
   const url = `${CONF_BASE_URL}/rest/api/content/${pageId}/child/attachment`;
 
@@ -468,7 +490,7 @@ async function uploadAttachmentToPage({
   const res = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: buildBasicAuthHeader(CONF_USERNAME, CONF_PASSWORD),
+      Authorization: getAuthHeader(),
       "X-Atlassian-Token": "no-check",
       // 注意：不要手动设置 Content-Type，让 fetch 自动带 boundary
     },
