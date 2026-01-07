@@ -4,8 +4,15 @@ CONF_USERNAME=your-email@example.com
 CONF_PASSWORD=your-api-token
 CONF_SPACE=YOUR_SPACE_KEY
 
+# 模板文档配置（可选）
+# 用于 create_dev_doc_from_template prompt，从 Confluence 页面 URL 中提取 pageId
+# 例如：https://kms.fineres.com/pages/viewpage.action?pageId=1020744803
+# pageId 为：1020744803
+CONF_DEV_TEMPLATE_PAGE_ID=1020744803
+
 # 注意：
 # 1. CONF_BASE_URL 不要包含尾部斜杠
 # 2. 对于 Atlassian Cloud，CONF_PASSWORD 应该是 API Token，不是密码
 # 3. 获取 API Token: https://id.atlassian.com/manage-profile/security/api-tokens
 # 4. 将此文件复制为 .env 并填入你的实际配置
+# 5. CONF_DEV_TEMPLATE_PAGE_ID 可以从 Confluence 页面 URL 的 pageId 参数中获取

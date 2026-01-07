@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import axios from "axios";
@@ -10,7 +10,7 @@ import path from "node:path";
 
 dotenv.config();
 
-const { CONF_BASE_URL, CONF_USERNAME, CONF_PASSWORD, CONF_SPACE, CONF_TOKEN } = process.env;
+const { CONF_BASE_URL, CONF_USERNAME, CONF_PASSWORD, CONF_SPACE, CONF_TOKEN, CONF_DEV_TEMPLATE_PAGE_ID } = process.env;
 
 // 判断是否使用 PAT (Personal Access Token) 认证
 const usePatAuth = Boolean(CONF_TOKEN);
@@ -624,7 +624,7 @@ function buildCodeMacro({
 
 // ===== MCP Server 实现 =====
 
-const server = new Server(
+const server = new McpServer(
   {
     name: "confluence-kms-mcp-server",
     version: "1.0.0",
@@ -636,8 +636,135 @@ const server = new Server(
   }
 );
 
+// ===== 注册 Prompt =====
+
+// 注册创建开发文档的 prompt，参考模板文档
+server.registerPrompt(
+  "create_dev_doc_from_template",
+  {
+    title: "创建开发文档（参考模板）",
+    description: `当需要创建开发文档时，参考指定的 Confluence 文档作为模板。该 prompt 会从环境变量 CONF_DEV_TEMPLATE_PAGE_ID 读取模板文档 ID，获取模板文档的内容，并指导用户基于模板创建新的开发文档。
+
+模板文档 ID 配置：
+- 环境变量：CONF_DEV_TEMPLATE_PAGE_ID
+- 可以从 Confluence 页面 URL 中提取，例如：https://kms.fineres.com/pages/viewpage.action?pageId=1020744803 中的 pageId=1020744803`,
+  },
+  async () => {
+    // 从环境变量读取模板文档 ID
+    const templatePageId = CONF_DEV_TEMPLATE_PAGE_ID;
+
+    if (!templatePageId) {
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `❌ 未配置模板文档 ID
+
+请设置环境变量 CONF_DEV_TEMPLATE_PAGE_ID。
+
+## 配置方法
+
+1. 从 Confluence 页面 URL 中提取 pageId：
+   - 例如：\`https://kms.fineres.com/pages/viewpage.action?pageId=1020744803\`
+   - pageId 为：\`1020744803\`
+
+2. 在 .env 文件中添加：
+   \`\`\`
+   CONF_DEV_TEMPLATE_PAGE_ID=1020744803
+   \`\`\`
+
+3. 或者在启动时设置环境变量：
+   \`\`\`
+   CONF_DEV_TEMPLATE_PAGE_ID=1020744803 node dist/mcp-server.js
+   \`\`\``,
+            },
+          },
+        ],
+      };
+    }
+
+    // 获取模板文档
+    let templatePage: ConfluencePage;
+    try {
+      templatePage = await getPageById(templatePageId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `❌ 无法获取模板文档（ID: ${templatePageId}）
+
+错误信息：${message}
+
+## 排查步骤
+
+1. 检查环境变量 CONF_DEV_TEMPLATE_PAGE_ID 是否正确设置
+2. 确认文档 ID 是否存在且可访问
+3. 检查认证配置（CONF_USERNAME/CONF_PASSWORD 或 CONF_TOKEN）是否正确
+4. 确认 CONF_BASE_URL 配置正确`,
+            },
+          },
+        ],
+      };
+    }
+
+    // 获取模板文档内容
+    const templateContent = templatePage.body?.storage?.value || "";
+    const templateUrl = templatePage._links?.webui
+      ? `${CONF_BASE_URL}${templatePage._links.webui}`
+      : undefined;
+
+    // 构建 prompt 消息
+    const promptText = `请参考以下模板文档创建新的开发文档。
+
+## 模板文档信息
+- **标题**: ${templatePage.title}
+- **ID**: ${templatePage.id}
+${templateUrl ? `- **链接**: ${templateUrl}` : ""}
+- **Space**: ${templatePage.space.key}
+
+## 模板文档内容
+以下是模板文档的完整内容，请参考其结构和格式来创建新的开发文档：
+
+\`\`\`
+${templateContent}
+\`\`\`
+
+## 任务说明
+1. 仔细阅读模板文档的内容和结构
+2. 根据模板的格式和结构，创建新的开发文档
+3. 将模板中的占位符、示例内容替换为实际内容
+4. 保持文档的结构和格式与模板一致
+5. 使用 \`confluence_create_page\` 或 \`confluence_upsert_page\` 工具创建新文档
+
+## 提示
+- 如果模板内容较长，可以分段处理
+- 确保新文档包含模板中的所有重要章节和结构
+- 根据实际项目情况调整内容，不要完全照搬模板
+- 模板文档 ID 来自环境变量 CONF_DEV_TEMPLATE_PAGE_ID: ${templatePageId}`;
+
+    return {
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: promptText,
+          },
+        },
+      ],
+    };
+  }
+);
+
+
 // 列出所有工具
-server.setRequestHandler(ListToolsRequestSchema, async () => {
+server.server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
@@ -1096,7 +1223,7 @@ async function resolveParentIdForCreate({
 }
 
 // 处理工具调用
-server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
+server.server.setRequestHandler(CallToolRequestSchema, async (request: CallToolRequest) => {
   const { name, arguments: argsRaw } = request.params;
   const args = (argsRaw ?? {}) as CallToolArgs;
 

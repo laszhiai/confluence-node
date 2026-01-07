@@ -1,0 +1,31 @@
+[
+  {
+    "name": "development-documentation-template",
+    "title": "开发文档模板",
+    "description": "生成开发文档模板，参考标准格式页面，可做必要的省略",
+    "arguments": [
+      {
+        "name": "docTitle",
+        "description": "文档标题",
+        "required": true
+      },
+      {
+        "name": "space",
+        "description": "Space Key（可选，如果不提供则使用默认 Space）",
+        "required": false
+      },
+      {
+        "name": "projectName",
+        "description": "项目名称（可选）",
+        "required": false
+      },
+      {
+        "name": "moduleName",
+        "description": "模块名称（可选）",
+        "required": false
+      }
+    ],
+    "template": "我需要创建一个开发文档。\n\n文档信息：\n- 标题: {{docTitle}}\n- {{#if space}}Space: {{space}}{{else}}使用默认 Space{{/if}}\n{{#if projectName}}- 项目名称: {{projectName}}\n{{/if}}{{#if moduleName}}- 模块名称: {{moduleName}}\n{{/if}}\n\n**重要：请参考标准格式页面作为模板**\n\n参考页面：\n- URL: https://kms.fineres.com/pages/viewpage.action?pageId=1020744803\n- 页面 ID: 1020744803\n\n请先执行以下步骤：\n1. 使用 confluence_get_page 工具获取参考页面的内容（pageId: 1020744803）\n2. 分析参考页面的格式和结构\n3. 根据参考格式，为我的文档创建相应的模板结构\n4. 可以根据实际需要做必要的省略和调整\n\n参考页面可能包含以下部分（请根据实际情况调整）：\n- 概述/简介\n- 功能说明\n- 技术架构\n- API 接口说明\n- 数据库设计\n- 部署说明\n- 测试说明\n- 相关文档链接\n\n请使用 confluence_create_page 或 confluence_upsert_page 工具创建文档。"
+  }
+]
+
